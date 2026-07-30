@@ -53,6 +53,7 @@ final class CatInteractionController {
     }
 }
 
+@MainActor
 private extension CGPoint {
     func screenPoint(window: NSWindow?) -> CGPoint {
         guard let window else { return self }
