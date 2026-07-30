@@ -1,4 +1,5 @@
 {
+  "schema_version": 2,
   "id": "default-lizz",
   "name": "喵心心",
   "author": "Personal edition based on DockCat by Auwuua",
@@ -15,6 +16,23 @@
     "x": 0.5,
     "y": 0.88
   },
+  "personality": {
+    "playfulness": 0.82,
+    "sociability": 0.78,
+    "calmness": 0.58,
+    "appetite": 0.62,
+    "sleepiness": 0.68,
+    "curiosity": 0.88
+  },
+  "toys": [
+    {"id": "blue-ball", "kind": "ball", "label": "蓝色小球", "enabled": true},
+    {"id": "laser-dot", "kind": "laser", "label": "激光点", "enabled": true},
+    {"id": "feather-wand", "kind": "wand", "label": "逗猫棒", "enabled": true},
+    {"id": "cardboard-box", "kind": "box", "label": "纸箱", "enabled": true},
+    {"id": "food-bowl", "kind": "food", "label": "饭碗", "enabled": true},
+    {"id": "water-bowl", "kind": "water", "label": "水碗", "enabled": true}
+  ],
+  "extensions": [],
   "poses": {
     "resting": "poses/resting",
     "held": "poses/held",

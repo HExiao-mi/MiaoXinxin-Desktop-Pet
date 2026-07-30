@@ -104,6 +104,41 @@ struct AppStrings {
         }
     }
 
+    var menuToys: String { language == .chinese ? "放置玩具与食物" : "Toys and bowls" }
+    var menuClearToys: String { language == .chinese ? "收起全部" : "Put all away" }
+    var menuQuietMode: String { language == .chinese ? "安静模式" : "Quiet mode" }
+    var menuReducedMotion: String { language == .chinese ? "减少动态" : "Reduce motion" }
+    var menuBatterySaver: String { language == .chinese ? "电池节能" : "Battery saver" }
+    var menuHideFullscreen: String { language == .chinese ? "全屏时隐藏" : "Hide during fullscreen" }
+    var menuLaunchAtLogin: String { language == .chinese ? "登录时启动" : "Launch at login" }
+    var menuCheckUpdates: String { language == .chinese ? "检查更新" : "Check for updates" }
+
+    func toyTitle(_ kind: PetToyKind) -> String {
+        switch (language, kind) {
+        case (.chinese, .ball): "小球"
+        case (.chinese, .laser): "激光点"
+        case (.chinese, .wand): "逗宠棒"
+        case (.chinese, .box): "纸箱"
+        case (.chinese, .food): "饭碗"
+        case (.chinese, .water): "水碗"
+        case (.english, .ball): "Ball"
+        case (.english, .laser): "Laser dot"
+        case (.english, .wand): "Teaser wand"
+        case (.english, .box): "Box"
+        case (.english, .food): "Food bowl"
+        case (.english, .water): "Water bowl"
+        }
+    }
+
+    func lifeLine(_ life: PetLifeState) -> String {
+        switch language {
+        case .chinese:
+            "精力 \(Int(life.energy))  饱腹 \(Int(life.fullness))  水分 \(Int(life.hydration))  心情 \(Int(life.mood))"
+        case .english:
+            "Energy \(Int(life.energy))  Full \(Int(life.fullness))  Water \(Int(life.hydration))  Mood \(Int(life.mood))"
+        }
+    }
+
     func recall(_ catName: String) -> String {
         switch language {
         case .chinese: "召回\(catName)"
@@ -301,6 +336,16 @@ extension AppStrings {
     var settingsReminderMessage: String { language == .chinese ? "提醒文案" : "Message" }
     var settingsDefaultOutingDuration: String { language == .chinese ? "默认出门时长" : "Default outing duration" }
     var settingsStateSection: String { language == .chinese ? "状态参数" : "State timing" }
+    var settingsComfortSection: String { language == .chinese ? "陪伴与系统" : "Companion & system" }
+    var settingsLifeSimulation: String { language == .chinese ? "温和养成" : "Gentle life simulation" }
+    var settingsNaturalSchedule: String { language == .chinese ? "自然昼夜作息" : "Natural daily rhythm" }
+    var settingsDesktopToys: String { language == .chinese ? "桌面玩具" : "Desktop toys" }
+    var settingsQuietMode: String { language == .chinese ? "安静模式" : "Quiet mode" }
+    var settingsReducedMotion: String { language == .chinese ? "减少动态" : "Reduce motion" }
+    var settingsBatterySaver: String { language == .chinese ? "电池节能" : "Battery saver" }
+    var settingsHideFullscreen: String { language == .chinese ? "全屏时隐藏" : "Hide during fullscreen" }
+    var settingsLaunchAtLogin: String { language == .chinese ? "登录时启动" : "Launch at login" }
+    var settingsAutomaticUpdates: String { language == .chinese ? "自动检查更新" : "Check updates automatically" }
     var settingsRestDuration: String { language == .chinese ? "休息时长" : "Rest duration" }
     var settingsWalkDuration: String { language == .chinese ? "散步时长" : "Walk duration" }
     var settingsWalkSpeed: String { language == .chinese ? "散步基础速度" : "Walk speed" }

@@ -10,6 +10,22 @@ public sealed record BehaviorDescriptor(
     string Label
 );
 
+public sealed record ToyReaction(string? BehaviorMode, bool TracksTarget = false);
+
+public static class ToyReactionCatalog
+{
+    public static ToyReaction For(string kind) => kind switch
+    {
+        "ball" => new("play_toy"),
+        "laser" => new(null, true),
+        "wand" => new("belly_roll"),
+        "box" => new("sleep_loaf"),
+        "food" => new("eating"),
+        "water" => new("drinking"),
+        _ => new(null)
+    };
+}
+
 public sealed class BehaviorCatalog
 {
     private readonly AssetPack _pack;
@@ -33,6 +49,24 @@ public sealed class BehaviorCatalog
         "ferret" => "war_dance",
         _ => "signature_move"
     };
+
+    public double AutonomousWeight(BehaviorDescriptor behavior, PetLifeState life, int hour)
+    {
+        var personality = _pack.Manifest.Personality;
+        var factor = behavior.Mode switch
+        {
+            "play_toy" or "signature_move" =>
+                (.35 + personality.Playfulness * 1.4) * Math.Max(.15, life.Energy / 70) * (.45 + life.Curiosity / 75),
+            "grooming" => .45 + personality.Calmness,
+            "belly_roll" => (.3 + personality.Sociability) * (.4 + life.Mood / 85),
+            "sleep_curled" or "sleep_side" or "sleep_loaf" =>
+                (.45 + personality.Sleepiness) * (life.Energy < 35 ? 2.8 : .75) * (hour >= 22 || hour < 7 ? 2.2 : 1),
+            "eating" => (.35 + personality.Appetite) * (life.Fullness < 35 ? 3.2 : .45),
+            "drinking" => life.Hydration < 38 ? 3.5 : .5,
+            _ => 1
+        };
+        return Math.Max(0, behavior.AutonomousWeight * factor);
+    }
 
     private IEnumerable<BehaviorDescriptor> Defaults()
     {

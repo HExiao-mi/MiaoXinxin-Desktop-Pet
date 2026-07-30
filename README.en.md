@@ -8,6 +8,8 @@ This cross-platform macOS and Windows desktop pet stars Miao Xinxin, a grey-and-
 
 In Random mode, Miao Xinxin plays with a felt ball, grooms, rolls onto her belly, eats, drinks, follows the nearby pointer with her head, and sleeps autonomously in three breathing poses. Her slower eight-frame short-legged gait replaces the old sliding walk. Right-click the cat or Dock icon to keep any behavior indefinitely, or choose Random to resume autonomous switching. Click the cat or choose “Pet Miao Xinxin” and she will lift her chin, close her eyes, and nuzzle before returning to the selected behavior.
 
+Version 0.8 adds a gentle local life/personality simulation (energy, fullness, hydration, mood, affection, curiosity and favorite toys), draggable desktop toys and bowls, natural daily rhythm, quiet/fullscreen modes, reduced motion, battery saving, launch at login, multi-display/DPI handling, installers and opt-in update prompts. Low meters only influence behavior; the pet never dies, becomes ill or disappears.
+
 The repository publishes auditable source and the shared pet pack rather than local ad-hoc binaries or private reference media. Build the macOS client with Xcode or the Windows 10/11 client with the .NET 8 SDK. GitHub Actions builds both platforms on every push.
 
 This customization retains the upstream PolyForm Noncommercial License and is for noncommercial use only. See [LICENSE.txt](LICENSE.txt).
@@ -106,6 +108,8 @@ dotnet build WindowsPet/WindowsPet.csproj -c Release
 dotnet run --project WindowsPet/WindowsPet.csproj -- "C:\path\to\PetPack"
 ```
 
+Launch the local visual pet studio with `python3 Tools/pet_studio.py`. It creates packs from photo/video references, copies a conversation-ready prompt, previews animation frames, edits personality/timing, runs strict validation and exports a ZIP that excludes private media and machine-local paths. See [distribution](docs/DISTRIBUTION.md) for DMG, Windows Setup and tagged GitHub Releases.
+
 ## Privacy And Local Data
 
 DockCat runs completely locally on your Mac. It does not require network access, transmit data, or include ads.
@@ -115,6 +119,7 @@ It stores only the necessary app data on your Mac:
 - Your custom settings, such as the cat's name, what it calls you, reminder intervals, and default outing duration.
 - Your usage statistics, such as companion time, completed water and movement reminders, and collectables the cat brought home.
 - Your custom cat asset packs.
+- Gentle life state, interaction counts and favorite-toy memory, stored only in the local settings file.
 
 When you update DockCat, it automatically reads the app's previous local data. If you use custom asset packs, we recommend keeping your own backup as an extra precaution.
 

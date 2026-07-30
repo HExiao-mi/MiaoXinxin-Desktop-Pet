@@ -13,3 +13,6 @@ WindowsPet/bin/
 WindowsPet/obj/
 __pycache__/
 *.py[cod]
+/dist/
+*.dmg
+*.exe

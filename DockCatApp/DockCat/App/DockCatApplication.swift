@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import UniformTypeIdentifiers
 
 @MainActor
@@ -19,6 +20,8 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     private let catMenuController = CatMenuController()
     private let walkAnimator = SpriteAnimator()
     private let idleActivityAnimator = SpriteAnimator()
+    private let desktopToyController = DesktopToyController()
+    private let updateChecker = GitHubUpdateChecker()
 
     private var settings: AppSettings = .defaults
     private var activitySpace = DockGeometry.currentActivitySpace(
@@ -43,11 +46,19 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     private var idleActivityTimer: Timer?
     private var idleActivityEndTimer: Timer?
     private var cursorTrackingTimer: Timer?
+    private var laserReactionResumeTimer: Timer?
+    private var lifeTimer: Timer?
+    private var environmentTimer: Timer?
     private var stateEndDate: Date?
     private var walkDirection: CGFloat = 1
     private var isIdleActivityPlaying = false
     private var idleActivityCompletion: (() -> Void)?
     private var currentLookFrameIndex: Int?
+    private var currentIdleActivity: IdleActivity?
+    private var isTrackingLaser = false
+    private var wasPetVisibleBeforeSuppression = false
+    private var isEnvironmentSuppressed = false
+    private var lastToyReactionDate = Date.distantPast
     private var pendingOutingDuration: TimeInterval?
     private var pendingOutingReturnReward: OutingReward?
     private var shouldUseStartPositionForNextTransition = false
@@ -57,6 +68,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
 
     private var strings: AppStrings {
         AppStrings(language: settings.language)
+    }
+
+    private var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil || NSClassFromString("XCTestCase") != nil
     }
 
     private var behaviorCatalog: PetBehaviorCatalog {
@@ -115,6 +130,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         configureMenus()
         configureApplicationMenu()
         configureDockObserver()
+        configureCompanionEnvironment()
         RuntimeDiagnostics.record("activitySpace frame=\(activitySpace.screenFrame) visible=\(activitySpace.visibleFrame) edge=\(activitySpace.dockEdge) entrance=\(activitySpace.entrancePoint)")
         iconController.showSleepIcon()
         catWindow.hide()
@@ -142,6 +158,8 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         if !stateMachine.state.isOuting {
             startReminderPolling()
         }
+        startCompanionTimers()
+        if !isRunningTests { checkForUpdatesIfDue() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -150,6 +168,15 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         startupTimer?.invalidate()
         reminderTimer?.invalidate()
         outingTimer?.invalidate()
+        lifeTimer?.invalidate()
+        environmentTimer?.invalidate()
+        laserReactionResumeTimer?.invalidate()
+        isTrackingLaser = false
+        if settings.lifeSimulationEnabled {
+            settings.petLife.advance(sleeping: currentIdleActivity?.isSleep == true)
+        }
+        settingsStore.save(settings)
+        desktopToyController.clear()
         stopWalk()
         stopIdleBehaviors()
         usageSessionTracker.stop()
@@ -304,9 +331,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
             self.catMenuController.show(
                 snapshot: self.statusSnapshot(),
                 language: self.settings.language,
-                behaviorMode: self.settings.petBehaviorMode,
+                currentSettings: self.settings,
                 species: self.assetPack.manifest.profile.species,
                 availableBehaviorModes: self.availableBehaviorModes,
+                toys: self.assetPack.manifest.toys,
                 at: event,
                 in: self.catWindow.catView
             )
@@ -355,6 +383,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     private func configureMenus() {
         catMenuController.onPet = { [weak self] in self?.petCat() }
         catMenuController.onBehaviorMode = { [weak self] mode in self?.selectBehaviorMode(mode) }
+        catMenuController.onToy = { [weak self] kind in self?.placeToy(kind) }
+        catMenuController.onClearToys = { [weak self] in self?.desktopToyController.clear() }
+        catMenuController.onTogglePreference = { [weak self] preference in self?.togglePreference(preference) }
+        catMenuController.onCheckUpdates = { [weak self] in self?.openReleasesPage() }
         catMenuController.onOuting = { [weak self] in self?.stateMachine.beginOutingPrompt() }
         catMenuController.onSettings = { [weak self] in self?.showSettings() }
         catMenuController.onSleep = { NSApplication.shared.terminate(nil) }
@@ -364,8 +396,13 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         dockMenuController.settingsProvider = { [weak self] in self?.settings ?? .defaults }
         dockMenuController.speciesProvider = { [weak self] in self?.assetPack?.manifest.profile.species ?? .cat }
         dockMenuController.behaviorModesProvider = { [weak self] in self?.availableBehaviorModes ?? [.random, .resting] }
+        dockMenuController.toysProvider = { [weak self] in self?.assetPack?.manifest.toys ?? [] }
         dockMenuController.onPet = { [weak self] in self?.petCat() }
         dockMenuController.onBehaviorMode = { [weak self] mode in self?.selectBehaviorMode(mode) }
+        dockMenuController.onToy = { [weak self] kind in self?.placeToy(kind) }
+        dockMenuController.onClearToys = { [weak self] in self?.desktopToyController.clear() }
+        dockMenuController.onTogglePreference = { [weak self] preference in self?.togglePreference(preference) }
+        dockMenuController.onCheckUpdates = { [weak self] in self?.openReleasesPage() }
         dockMenuController.onOuting = { [weak self] in self?.stateMachine.beginOutingPrompt() }
         dockMenuController.onRecall = { [weak self] in self?.showRecallConfirmation() }
         dockMenuController.onSettings = { [weak self] in self?.showSettings() }
@@ -376,6 +413,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
             let previousAssetPackID = self.settings.selectedAssetPackID
             let previousCatActivityScope = self.settings.catActivityScope
             let previousLanguage = self.settings.language
+            let previousLaunchAtLogin = self.settings.launchAtLogin
             self.settings = updated
             self.reminderScheduler.updateSettings(updated)
             if updated.language != previousLanguage {
@@ -391,6 +429,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
             let point = shouldResetPosition ? self.startPositionAnchor() : self.clampedCatPoint(self.stateMachine.position)
             self.updateCurrentPositionPreservingState(point)
             self.updateStateMachineParameters()
+            if updated.launchAtLogin != previousLaunchAtLogin {
+                self.updateLaunchAtLogin(enabled: updated.launchAtLogin)
+            }
+            self.updateEnvironmentVisibility()
             self.saveUserDataBackup()
         }
     }
@@ -739,6 +781,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         workspaceCenter.addObserver(self, selector: #selector(workspaceDidWake), name: NSWorkspace.didWakeNotification, object: nil)
         workspaceCenter.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
         workspaceCenter.addObserver(self, selector: #selector(screensDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        workspaceCenter.addObserver(self, selector: #selector(frontmostApplicationChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
     }
 
     private func removeUsageSessionObservers() {
@@ -746,13 +789,23 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.removeObserver(self, name: NSWorkspace.didWakeNotification, object: nil)
         NSWorkspace.shared.notificationCenter.removeObserver(self, name: NSWorkspace.screensDidSleepNotification, object: nil)
         NSWorkspace.shared.notificationCenter.removeObserver(self, name: NSWorkspace.screensDidWakeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.removeObserver(self, name: NSWorkspace.didActivateApplicationNotification, object: nil)
     }
 
     @objc private func workspaceWillSleep() {
+        if settings.lifeSimulationEnabled {
+            settings.petLife.advance(sleeping: currentIdleActivity?.isSleep == true)
+        }
+        settingsStore.save(settings)
         usageSessionTracker.screenDidSleep()
     }
 
     @objc private func workspaceDidWake() {
+        if settings.lifeSimulationEnabled {
+            settings.petLife.advance(sleeping: true)
+            settings.petLife.apply(.wake)
+        }
+        settingsStore.save(settings)
         usageSessionTracker.screenDidWake()
         resolveActiveOutingAfterWake()
     }
@@ -764,6 +817,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     @objc private func screensDidWake() {
         usageSessionTracker.screenDidWake()
         resolveActiveOutingAfterWake()
+    }
+
+    @objc private func frontmostApplicationChanged() {
+        updateEnvironmentVisibility()
     }
 
     private func showSettings() {
@@ -782,7 +839,8 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         CatStatusSnapshot(
             state: stateMachine.state,
             stateEndDate: stateEndDate,
-            outingEndDate: settings.activeOutingEndDate
+            outingEndDate: settings.activeOutingEndDate,
+            life: settings.petLife
         )
     }
 
@@ -1324,7 +1382,15 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
             else {
                 return nil
             }
-            return (activity, descriptor.autonomousWeight)
+            let hour = settings.naturalScheduleEnabled ? Calendar.current.component(.hour, from: Date()) : 12
+            let life = settings.lifeSimulationEnabled ? settings.petLife : PetLifeState()
+            let weight = behaviorCatalog.autonomousWeight(
+                for: descriptor,
+                life: life,
+                personality: assetPack.manifest.personality,
+                hour: hour
+            )
+            return weight > 0 ? (activity, weight) : nil
         }
         let total = candidates.reduce(0) { $0 + $1.1 }
         guard total > 0 else { return nil }
@@ -1337,6 +1403,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     }
 
     private func stopIdleBehaviors() {
+        if settings.lifeSimulationEnabled, currentIdleActivity?.isSleep == true {
+            settings.petLife.advance(sleeping: true)
+            settingsStore.save(settings)
+        }
         idleActivityTimer?.invalidate()
         idleActivityTimer = nil
         idleActivityEndTimer?.invalidate()
@@ -1347,6 +1417,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         isIdleActivityPlaying = false
         idleActivityCompletion = nil
         currentLookFrameIndex = nil
+        currentIdleActivity = nil
     }
 
     private func scheduleNextIdleActivity(after delay: TimeInterval? = nil) {
@@ -1375,14 +1446,17 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     }
 
     private func updateCursorLook() {
+        showLook(toward: NSEvent.mouseLocation, maximumDistance: 520)
+    }
+
+    private func showLook(toward target: CGPoint, maximumDistance: CGFloat) {
         guard case .resting = stateMachine.state, !isIdleActivityPlaying else { return }
 
-        let mouse = NSEvent.mouseLocation
         let catFrame = catWindow.catView.frame.offsetBy(dx: catWindow.panel.frame.minX, dy: catWindow.panel.frame.minY)
-        let dx = mouse.x - catFrame.midX
-        let dy = mouse.y - catFrame.midY
+        let dx = target.x - catFrame.midX
+        let dy = target.y - catFrame.midY
         let distance = hypot(dx, dy)
-        guard distance <= 520 else {
+        guard distance <= maximumDistance else {
             if currentLookFrameIndex != nil {
                 currentLookFrameIndex = nil
                 showRestingPose()
@@ -1416,6 +1490,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     private func playIdleActivity(
         _ activity: IdleActivity,
         continuous: Bool = false,
+        recordLifeEvent: Bool = true,
         onFinish: (() -> Void)? = nil
     ) {
         guard case .resting = stateMachine.state else { return }
@@ -1425,6 +1500,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         idleActivityEndTimer = nil
         idleActivityAnimator.stop()
         isIdleActivityPlaying = true
+        currentIdleActivity = activity
         idleActivityCompletion = onFinish
         currentLookFrameIndex = nil
         guard let descriptor = behaviorDescriptor(for: activity) else {
@@ -1433,9 +1509,15 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         }
         RuntimeDiagnostics.record("idleActivity start=\(descriptor.assetName)")
 
+        var effectiveFPS = descriptor.fps
+        if settings.reducedMotion { effectiveFPS = min(effectiveFPS, 1.5) }
+        if settings.batterySaverEnabled, DesktopEnvironmentMonitor.isOnBatterySaver {
+            effectiveFPS = min(effectiveFPS, 3)
+        }
+        if recordLifeEvent { applyLifeEffect(for: activity) }
         let baseAnimation = renderer.animation(
             named: descriptor.assetName,
-            fps: descriptor.fps,
+            fps: effectiveFPS,
             loops: continuous || descriptor.isSleep
         )
         guard !baseAnimation.frames.isEmpty else {
@@ -1470,7 +1552,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         }
 
         let repeatedFrames = Array(repeating: baseAnimation.frames, count: descriptor.playbackLoops).flatMap { $0 }
-        let animation = SpriteAnimation(frames: repeatedFrames, fps: descriptor.fps, loops: false)
+        let animation = SpriteAnimation(frames: repeatedFrames, fps: effectiveFPS, loops: false)
         idleActivityAnimator.start(
             animation: animation,
             onFrame: { [weak self, animation] frameIndex in
@@ -1495,6 +1577,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         idleActivityEndTimer?.invalidate()
         idleActivityEndTimer = nil
         isIdleActivityPlaying = false
+        currentIdleActivity = nil
         currentLookFrameIndex = nil
         RuntimeDiagnostics.record("idleActivity finish")
         guard case .resting = stateMachine.state else { return }
@@ -1596,6 +1679,10 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     }
 
     private func petCat() {
+        if settings.lifeSimulationEnabled {
+            settings.petLife.apply(.pet)
+            settingsStore.save(settings)
+        }
         switch stateMachine.state {
         case .resting, .walking:
             stateScheduler.cancel()
@@ -1709,6 +1796,197 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         return lower ... upper
     }
 
+    private func configureCompanionEnvironment() {
+        desktopToyController.onUse = { [weak self] kind, point in
+            self?.reactToToy(kind, at: point)
+        }
+    }
+
+    private func startCompanionTimers() {
+        lifeTimer?.invalidate()
+        lifeTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.settings.lifeSimulationEnabled else { return }
+                self.settings.petLife.advance(sleeping: self.currentIdleActivity?.isSleep == true)
+                self.settingsStore.save(self.settings)
+            }
+        }
+        environmentTimer?.invalidate()
+        environmentTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateEnvironmentVisibility() }
+        }
+    }
+
+    private func applyLifeEffect(for activity: IdleActivity) {
+        guard settings.lifeSimulationEnabled else { return }
+        switch activity {
+        case .playToy, .signatureMove:
+            settings.petLife.apply(.play)
+        case .eating:
+            settings.petLife.apply(.eat)
+        case .drinking:
+            settings.petLife.apply(.drink)
+        case .sleepCurled, .sleepSide, .sleepLoaf:
+            settings.petLife.apply(.sleep)
+        case .grooming, .bellyRoll, .petResponse:
+            break
+        }
+        settingsStore.save(settings)
+    }
+
+    private func placeToy(_ kind: PetToyKind) {
+        let origin = CGPoint(
+            x: catWindow.panel.frame.maxX + 14,
+            y: max(activitySpace.visibleFrame.minY + 8, catWindow.panel.frame.minY)
+        )
+        desktopToyController.place(kind, near: origin)
+    }
+
+    private func reactToToy(_ kind: PetToyKind, at point: CGPoint) {
+        let minimumInterval: TimeInterval = kind == .laser ? 0.08 : 0.25
+        guard Date().timeIntervalSince(lastToyReactionDate) >= minimumInterval else { return }
+        lastToyReactionDate = Date()
+        guard stateMachine.state.isLongDuration else { return }
+
+        let reaction = PetToyReactionCatalog.reaction(for: kind)
+        if case .trackTarget = reaction {
+            if !isTrackingLaser {
+                if settings.lifeSimulationEnabled {
+                    settings.petLife.apply(.play, toy: kind)
+                    settingsStore.save(settings)
+                }
+                stateScheduler.cancel()
+                stateEndDate = nil
+                stopWalk()
+                stateMachine.enterManualLongDurationState(.resting)
+                stopIdleBehaviors()
+                isTrackingLaser = true
+            }
+            showLook(toward: point, maximumDistance: .greatestFiniteMagnitude)
+            laserReactionResumeTimer?.invalidate()
+            laserReactionResumeTimer = Timer.scheduledTimer(withTimeInterval: 0.22, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.laserReactionResumeTimer = nil
+                    self.isTrackingLaser = false
+                    self.applyConfiguredBehaviorMode()
+                }
+            }
+            return
+        }
+
+        laserReactionResumeTimer?.invalidate()
+        laserReactionResumeTimer = nil
+        isTrackingLaser = false
+        guard case .behavior(let mode) = reaction, let activity = IdleActivity(mode: mode) else { return }
+        if settings.lifeSimulationEnabled {
+            switch kind {
+            case .food: settings.petLife.apply(.eat)
+            case .water: settings.petLife.apply(.drink)
+            default: settings.petLife.apply(.play, toy: kind)
+            }
+        }
+        settingsStore.save(settings)
+        stateScheduler.cancel()
+        stateEndDate = nil
+        stateMachine.enterManualLongDurationState(.resting)
+        catWindow.setMirrored(point.x < catWindow.panel.frame.midX)
+        playIdleActivity(activity, recordLifeEvent: false, onFinish: { [weak self] in self?.applyConfiguredBehaviorMode() })
+    }
+
+    private func togglePreference(_ preference: PetPreferenceToggle) {
+        switch preference {
+        case .quietMode:
+            settings.quietMode.toggle()
+        case .reducedMotion:
+            settings.reducedMotion.toggle()
+            applyConfiguredBehaviorMode()
+        case .batterySaver:
+            settings.batterySaverEnabled.toggle()
+            applyConfiguredBehaviorMode()
+        case .hideDuringFullscreen:
+            settings.hideDuringFullscreen.toggle()
+        case .launchAtLogin:
+            settings.launchAtLogin.toggle()
+            updateLaunchAtLogin(enabled: settings.launchAtLogin)
+        }
+        settingsStore.save(settings)
+        updateEnvironmentVisibility()
+    }
+
+    private func updateLaunchAtLogin(enabled: Bool) {
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if enabled {
+                if SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
+            } else if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            DockCatLog.app.error("Failed to update launch-at-login: \(error.localizedDescription)")
+        }
+    }
+
+    private func updateEnvironmentVisibility() {
+        let shouldSuppress = settings.quietMode ||
+            (settings.hideDuringFullscreen && DesktopEnvironmentMonitor.isForegroundApplicationFullscreen())
+        guard shouldSuppress != isEnvironmentSuppressed else { return }
+        isEnvironmentSuppressed = shouldSuppress
+        if shouldSuppress {
+            wasPetVisibleBeforeSuppression = catWindow.panel.isVisible
+            catWindow.hide()
+            desktopToyController.setHidden(true)
+        } else {
+            desktopToyController.setHidden(false)
+            if wasPetVisibleBeforeSuppression, !stateMachine.state.isOuting {
+                catWindow.show(at: clampedCatPoint(stateMachine.position))
+            }
+            wasPetVisibleBeforeSuppression = false
+        }
+    }
+
+    private func openReleasesPage() {
+        checkForUpdates(showCurrentResult: true)
+    }
+
+    private func checkForUpdatesIfDue() {
+        guard settings.automaticUpdateChecks else { return }
+        if let last = settings.lastUpdateCheckDate, Date().timeIntervalSince(last) < 24 * 60 * 60 { return }
+        checkForUpdates(showCurrentResult: false)
+    }
+
+    private func checkForUpdates(showCurrentResult: Bool) {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        updateChecker.check(currentVersion: version) { [weak self] result in
+            guard let self else { return }
+            self.settings.lastUpdateCheckDate = Date()
+            self.settingsStore.save(self.settings)
+            switch result {
+            case let .updateAvailable(tag, page):
+                let alert = NSAlert()
+                alert.messageText = self.settings.language == .chinese ? "发现新版本 \(tag)" : "Update \(tag) is available"
+                alert.informativeText = self.settings.language == .chinese
+                    ? "将在 GitHub Releases 中打开经过发布流水线生成的安装包。"
+                    : "Open the installer produced by the verified GitHub release workflow."
+                alert.addButton(withTitle: self.settings.language == .chinese ? "打开下载页" : "Open downloads")
+                alert.addButton(withTitle: self.strings.cancel)
+                if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(page) }
+            case .current where showCurrentResult:
+                self.showAlert(
+                    title: self.settings.language == .chinese ? "已经是最新版本" : "You're up to date",
+                    message: self.settings.language == .chinese ? "当前没有更新。" : "No update is currently available."
+                )
+            case let .failed(message) where showCurrentResult:
+                self.showAlert(
+                    title: self.settings.language == .chinese ? "暂时无法检查更新" : "Unable to check for updates",
+                    message: message
+                )
+            default:
+                break
+            }
+        }
+    }
+
     @objc private func startOutingFromMenu() {
         stateMachine.beginOutingPrompt()
     }
@@ -1737,6 +2015,21 @@ private enum IdleActivity {
     case drinking
     case petResponse
     case signatureMove
+
+    init?(mode: PetBehaviorMode) {
+        switch mode {
+        case .playToy: self = .playToy
+        case .grooming: self = .grooming
+        case .bellyRoll: self = .bellyRoll
+        case .sleepCurled: self = .sleepCurled
+        case .sleepSide: self = .sleepSide
+        case .sleepLoaf: self = .sleepLoaf
+        case .eating: self = .eating
+        case .drinking: self = .drinking
+        case .signatureMove: self = .signatureMove
+        case .random, .resting, .walking: return nil
+        }
+    }
 
     static let autonomousChoices: [IdleActivity] = [
         .playToy,
@@ -1783,6 +2076,13 @@ private enum IdleActivity {
         case .drinking: return "drinking"
         case .petResponse: return "pet_response"
         case .signatureMove: return "signature_move"
+        }
+    }
+
+    var isSleep: Bool {
+        switch self {
+        case .sleepCurled, .sleepSide, .sleepLoaf: true
+        default: false
         }
     }
 }

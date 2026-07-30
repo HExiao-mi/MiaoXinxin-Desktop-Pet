@@ -5,6 +5,7 @@ struct CatStatusSnapshot {
     var state: CatState
     var stateEndDate: Date?
     var outingEndDate: Date?
+    var life: PetLifeState = PetLifeState()
 }
 
 enum CatStatusMenuPresenter {

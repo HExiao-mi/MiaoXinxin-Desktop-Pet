@@ -16,6 +16,86 @@ enum PetSpecies: String, Codable, CaseIterable, Equatable {
 }
 
 struct AssetManifest: Codable, Equatable {
+    struct Personality: Codable, Equatable {
+        var playfulness: Double
+        var sociability: Double
+        var calmness: Double
+        var appetite: Double
+        var sleepiness: Double
+        var curiosity: Double
+
+        static let balanced = Personality(
+            playfulness: 0.65,
+            sociability: 0.65,
+            calmness: 0.55,
+            appetite: 0.55,
+            sleepiness: 0.55,
+            curiosity: 0.7
+        )
+
+        enum CodingKeys: String, CodingKey {
+            case playfulness, sociability, calmness, appetite, sleepiness, curiosity
+        }
+
+        init(playfulness: Double, sociability: Double, calmness: Double, appetite: Double, sleepiness: Double, curiosity: Double) {
+            self.playfulness = Self.unit(playfulness)
+            self.sociability = Self.unit(sociability)
+            self.calmness = Self.unit(calmness)
+            self.appetite = Self.unit(appetite)
+            self.sleepiness = Self.unit(sleepiness)
+            self.curiosity = Self.unit(curiosity)
+        }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            let fallback = Self.balanced
+            self.init(
+                playfulness: try values.decodeIfPresent(Double.self, forKey: .playfulness) ?? fallback.playfulness,
+                sociability: try values.decodeIfPresent(Double.self, forKey: .sociability) ?? fallback.sociability,
+                calmness: try values.decodeIfPresent(Double.self, forKey: .calmness) ?? fallback.calmness,
+                appetite: try values.decodeIfPresent(Double.self, forKey: .appetite) ?? fallback.appetite,
+                sleepiness: try values.decodeIfPresent(Double.self, forKey: .sleepiness) ?? fallback.sleepiness,
+                curiosity: try values.decodeIfPresent(Double.self, forKey: .curiosity) ?? fallback.curiosity
+            )
+        }
+
+        private static func unit(_ value: Double) -> Double { min(1, max(0, value)) }
+    }
+
+    struct ToyDefinition: Codable, Equatable {
+        var id: String
+        var kind: PetToyKind
+        var label: String?
+        var enabled: Bool
+
+        init(id: String, kind: PetToyKind, label: String? = nil, enabled: Bool = true) {
+            self.id = id
+            self.kind = kind
+            self.label = label
+            self.enabled = enabled
+        }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            id = try values.decode(String.self, forKey: .id)
+            kind = try values.decode(PetToyKind.self, forKey: .kind)
+            label = try values.decodeIfPresent(String.self, forKey: .label)
+            enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        }
+    }
+
+    struct ExtensionDefinition: Codable, Equatable {
+        var id: String
+        var kind: String
+        var path: String
+        var minimumAppVersion: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, kind, path
+            case minimumAppVersion = "minimum_app_version"
+        }
+    }
+
     struct PetProfile: Codable, Equatable {
         var species: PetSpecies
         var breed: String?
@@ -182,6 +262,7 @@ struct AssetManifest: Codable, Equatable {
     }
 
     var id: String
+    var schemaVersion: Int
     var name: String
     var author: String
     var profile: PetProfile
@@ -191,9 +272,13 @@ struct AssetManifest: Codable, Equatable {
     var poses: StaticPoses
     var animations: Animations
     var appIcons: AppIcons? = nil
+    var personality: Personality
+    var toys: [ToyDefinition]
+    var extensions: [ExtensionDefinition]
 
     enum CodingKeys: String, CodingKey {
         case id
+        case schemaVersion = "schema_version"
         case name
         case author
         case profile
@@ -203,10 +288,14 @@ struct AssetManifest: Codable, Equatable {
         case poses
         case animations
         case appIcons = "app_icons"
+        case personality
+        case toys
+        case extensions
     }
 
     init(
         id: String,
+        schemaVersion: Int = 2,
         name: String,
         author: String,
         profile: PetProfile = .genericCat,
@@ -215,9 +304,13 @@ struct AssetManifest: Codable, Equatable {
         defaultAnchor: Anchor,
         poses: StaticPoses,
         animations: Animations,
-        appIcons: AppIcons? = nil
+        appIcons: AppIcons? = nil,
+        personality: Personality = .balanced,
+        toys: [ToyDefinition] = PetToyKind.allCases.map { ToyDefinition(id: $0.rawValue, kind: $0) },
+        extensions: [ExtensionDefinition] = []
     ) {
         self.id = id
+        self.schemaVersion = schemaVersion
         self.name = name
         self.author = author
         self.profile = profile
@@ -227,11 +320,15 @@ struct AssetManifest: Codable, Equatable {
         self.poses = poses
         self.animations = animations
         self.appIcons = appIcons
+        self.personality = personality
+        self.toys = toys
+        self.extensions = extensions
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        schemaVersion = max(1, try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1)
         name = try container.decode(String.self, forKey: .name)
         author = try container.decode(String.self, forKey: .author)
         profile = try container.decodeIfPresent(PetProfile.self, forKey: .profile) ?? .genericCat
@@ -243,11 +340,16 @@ struct AssetManifest: Codable, Equatable {
         animations = try container.decodeIfPresent(Animations.self, forKey: .animations)
             ?? Animations(walk: Animation(fps: 3, frames: []))
         appIcons = try container.decodeIfPresent(AppIcons.self, forKey: .appIcons)
+        personality = try container.decodeIfPresent(Personality.self, forKey: .personality) ?? .balanced
+        toys = try container.decodeIfPresent([ToyDefinition].self, forKey: .toys)
+            ?? PetToyKind.allCases.map { ToyDefinition(id: $0.rawValue, kind: $0) }
+        extensions = try container.decodeIfPresent([ExtensionDefinition].self, forKey: .extensions) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(name, forKey: .name)
         try container.encode(author, forKey: .author)
         try container.encode(profile, forKey: .profile)
@@ -257,5 +359,8 @@ struct AssetManifest: Codable, Equatable {
         try container.encode(poses, forKey: .poses)
         try container.encode(animations, forKey: .animations)
         try container.encodeIfPresent(appIcons, forKey: .appIcons)
+        try container.encode(personality, forKey: .personality)
+        try container.encode(toys, forKey: .toys)
+        try container.encode(extensions, forKey: .extensions)
     }
 }

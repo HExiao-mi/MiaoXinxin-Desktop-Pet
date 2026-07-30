@@ -3,9 +3,12 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MiaoXinxin</AssemblyName>
+    <Version>0.8.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>MiaoXinxin.Windows</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
