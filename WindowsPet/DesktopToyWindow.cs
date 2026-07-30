@@ -61,7 +61,13 @@ public sealed class DesktopToyWindow : Window
             BorderBrush = new SolidColorBrush(Color.FromArgb(90, 0, 0, 0)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(14),
-            Child = new TextBlock { Text = emoji, FontSize = kind == "box" ? 38 : 31, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            Child = new TextBlock
+            {
+                Text = emoji,
+                FontSize = kind == "box" ? 38 : 31,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center
+            }
         };
     }
 

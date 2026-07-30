@@ -35,7 +35,7 @@ public sealed class ToyDefinition
     [JsonPropertyName("label")] public string? Label { get; set; }
     [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
 
-    public static List<ToyDefinition> Defaults() => ["ball", "laser", "wand", "box", "food", "water"]
+    public static List<ToyDefinition> Defaults() => new[] { "ball", "laser", "wand", "box", "food", "water" }
         .Select(kind => new ToyDefinition { Id = kind, Kind = kind })
         .ToList();
 }
