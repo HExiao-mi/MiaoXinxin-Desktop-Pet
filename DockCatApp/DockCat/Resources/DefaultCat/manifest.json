@@ -1,0 +1,41 @@
+{
+  "id": "default-lizz",
+  "name": "喵心心",
+  "author": "Personal edition based on DockCat by Auwuua",
+  "profile": {
+    "species": "cat",
+    "breed": "Munchkin",
+    "body_traits": ["short_legs", "round_face"],
+    "identity_features": ["gray_and_white_coat", "golden_round_eyes", "blue_bead_collar"],
+    "motion_notes": ["short_stride", "alternating_paw_contact"]
+  },
+  "canvas_width": 1280,
+  "canvas_height": 1280,
+  "default_anchor": {
+    "x": 0.5,
+    "y": 0.88
+  },
+  "poses": {
+    "resting": "poses/resting",
+    "held": "poses/held",
+    "dialogue": "poses/dialogue",
+    "transition": "poses/transition"
+  },
+  "animations": {
+    "walk": {
+      "fps": 4,
+      "frames": []
+    },
+    "behaviors": {
+      "play_toy": {"fps": 2.2, "frames": [], "playback_loops": 2, "autonomous_weight": 1.0},
+      "grooming": {"fps": 2.5, "frames": [], "playback_loops": 2, "autonomous_weight": 0.8},
+      "belly_roll": {"fps": 1.9, "frames": [], "playback_loops": 1, "autonomous_weight": 0.65},
+      "sleep_curled": {"fps": 1.4, "frames": [], "sleep": true, "autonomous_weight": 0.7},
+      "sleep_side": {"fps": 1.4, "frames": [], "sleep": true, "autonomous_weight": 0.7},
+      "sleep_loaf": {"fps": 1.4, "frames": [], "sleep": true, "autonomous_weight": 0.7},
+      "eating": {"fps": 2.0, "frames": [], "playback_loops": 2, "autonomous_weight": 0.65},
+      "drinking": {"fps": 2.0, "frames": [], "playback_loops": 2, "autonomous_weight": 0.65},
+      "pet_response": {"fps": 2.2, "frames": [], "playback_loops": 1, "autonomous_weight": 0.0}
+    }
+  }
+}

@@ -1,0 +1,52 @@
+name: Cross-platform CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pet-pack:
+    name: Pet-pack protocol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test generator and validator
+        run: python -m unittest discover -s Tools/tests -v
+      - name: Validate bundled Miao Xinxin pack
+        run: >-
+          python Tools/petpack.py validate
+          DockCatApp/DockCat/Resources/DefaultCat
+          --strict
+
+  macos:
+    name: macOS AppKit client
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: >-
+          xcodebuild
+          -project DockCatApp/DockCat.xcodeproj
+          -scheme DockCat
+          -configuration Debug
+          -destination 'platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/DockCatDerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          test
+
+  windows:
+    name: Windows WPF client
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build Windows client
+        run: dotnet build WindowsPet/WindowsPet.csproj -c Release

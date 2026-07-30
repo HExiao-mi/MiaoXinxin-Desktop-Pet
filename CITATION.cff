@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this project, cite both this derivative and Auwuua/DockCat."
+title: "Miao Xinxin Cross-Platform Desktop Pet"
+type: software
+authors:
+  - family-names: "Auwuua"
+    affiliation: "Original DockCat author"
+  - name: "MiaoXinxin contributors"
+version: 1.0.0
+date-released: 2026-07-30
+license: LicenseRef-PolyForm-Noncommercial-1.0.0
+repository-code: "https://github.com/HExiao-mi/MiaoXinxin-Desktop-Pet"
+references:
+  - type: software
+    title: "DockCat"
+    authors:
+      - family-names: "Auwuua"
+    version: 0.7.0
+    repository-code: "https://github.com/Auwuua/DockCat"

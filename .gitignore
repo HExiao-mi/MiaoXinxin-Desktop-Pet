@@ -1,0 +1,15 @@
+.DS_Store
+/Art/
+DockCatApp/DerivedData*/
+ReferenceMedia/
+*.xcuserstate
+xcuserdata/
+*.zip
+/MiaoXinxin/
+/MiaoXinxin 2/
+*.profraw
+**/.petpack-local.json
+WindowsPet/bin/
+WindowsPet/obj/
+__pycache__/
+*.py[cod]
