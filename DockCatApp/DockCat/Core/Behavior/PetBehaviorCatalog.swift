@@ -9,6 +9,24 @@ struct PetBehaviorDescriptor: Equatable {
     var autonomousWeight: Double
 }
 
+enum PetToyReaction: Equatable {
+    case trackTarget
+    case behavior(PetBehaviorMode)
+}
+
+enum PetToyReactionCatalog {
+    static func reaction(for kind: PetToyKind) -> PetToyReaction {
+        switch kind {
+        case .ball: return .behavior(.playToy)
+        case .laser: return .trackTarget
+        case .wand: return .behavior(.bellyRoll)
+        case .box: return .behavior(.sleepLoaf)
+        case .food: return .behavior(.eating)
+        case .water: return .behavior(.drinking)
+        }
+    }
+}
+
 struct PetBehaviorCatalog {
     let profile: AssetManifest.PetProfile
     let animations: AssetManifest.Animations

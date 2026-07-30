@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _activityTimer = new();
     private readonly DispatcherTimer _behaviorEndTimer = new();
     private readonly DispatcherTimer _cursorTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private readonly DispatcherTimer _toyResumeTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
     private readonly DispatcherTimer _lifeTimer = new() { Interval = TimeSpan.FromMinutes(1) };
     private readonly DispatcherTimer _environmentTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly List<DesktopToyWindow> _toyWindows = [];
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
     private bool _currentSleeping;
     private bool _suppressed;
     private DateTime _lastToyReaction = DateTime.MinValue;
+    private bool _trackingLaser;
 
     public MainWindow(AssetPack pack)
     {
@@ -67,6 +69,7 @@ public partial class MainWindow : Window
         _activityTimer.Tick += (_, _) => BeginRandomActivity();
         _behaviorEndTimer.Tick += (_, _) => FinishTimedBehavior();
         _cursorTimer.Tick += (_, _) => UpdateCursorLook();
+        _toyResumeTimer.Tick += (_, _) => FinishLaserReaction();
         _lifeTimer.Tick += (_, _) => UpdateLife();
         _environmentTimer.Tick += (_, _) => UpdateDesktopEnvironment();
     }
@@ -272,12 +275,18 @@ public partial class MainWindow : Window
     {
         if (!_pack.HasAnimation("look") || _frames.Count > 0) return;
         if (!GetCursorPos(out var point)) return;
+        ShowLookAt(new Point(point.X, point.Y), 520);
+    }
+
+    private void ShowLookAt(Point target, double maximumDistance)
+    {
+        if (!_pack.HasAnimation("look")) return;
         var centerX = Left + Width / 2;
         var centerY = Top + Height / 2;
-        var dx = point.X - centerX;
-        var dy = point.Y - centerY;
+        var dx = target.X - centerX;
+        var dy = target.Y - centerY;
         var distance = Math.Sqrt(dx * dx + dy * dy);
-        if (distance > 520) return;
+        if (distance > maximumDistance) return;
         var look = _pack.AnimationFrames("look");
         var index = distance < 45 ? 1 : dy < -45 && Math.Abs(dy) > Math.Abs(dx) * .7 ? 3 : dx < 0 ? 0 : 2;
         if (index < look.Count) ShowFrame(look[index]);
@@ -377,21 +386,48 @@ public partial class MainWindow : Window
 
     private void ReactToToy(string kind, Point position)
     {
-        if ((DateTime.Now - _lastToyReaction).TotalSeconds < (kind == "laser" ? 1.25 : .25)) return;
+        if ((DateTime.Now - _lastToyReaction).TotalSeconds < (kind == "laser" ? .08 : .25)) return;
         _lastToyReaction = DateTime.Now;
+        var reaction = ToyReactionCatalog.For(kind);
+        if (reaction.TracksTarget)
+        {
+            if (!_trackingLaser)
+            {
+                _resumeMode = _settings.BehaviorMode;
+                StopAll();
+                _trackingLaser = true;
+                if (_settings.LifeSimulationEnabled)
+                {
+                    _settings.Life.Apply("play", kind);
+                    _settings.Save();
+                }
+            }
+            ShowLookAt(position, double.MaxValue);
+            _toyResumeTimer.Stop();
+            _toyResumeTimer.Start();
+            return;
+        }
+
         if (_settings.LifeSimulationEnabled)
         {
             _settings.Life.Apply(kind switch { "food" => "eat", "water" => "drink", _ => "play" }, kind);
             _settings.Save();
         }
-        var mode = kind switch { "food" => "eating", "water" => "drinking", _ => "play_toy" };
-        var behavior = _catalog.AvailableBehaviors.FirstOrDefault(item => item.Mode == mode);
+        var behavior = _catalog.AvailableBehaviors.FirstOrDefault(item => item.Mode == reaction.BehaviorMode);
         if (behavior is not null)
         {
             _resumeMode = _settings.BehaviorMode;
             SetMirrored(position.X < Left + Width / 2);
             PlayBehavior(behavior, false, () => ApplyMode(_resumeMode), recordLife: false);
         }
+    }
+
+    private void FinishLaserReaction()
+    {
+        _toyResumeTimer.Stop();
+        if (!_trackingLaser) return;
+        _trackingLaser = false;
+        ApplyMode(_resumeMode);
     }
 
     private void UpdateLife()
@@ -541,9 +577,11 @@ public partial class MainWindow : Window
         _activityTimer.Stop();
         _behaviorEndTimer.Stop();
         _cursorTimer.Stop();
+        _toyResumeTimer.Stop();
         _frames = [];
         _walking = false;
         _currentSleeping = false;
+        _trackingLaser = false;
         _animationCompleted = null;
         _timedBehaviorCompletion = null;
     }

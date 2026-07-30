@@ -46,6 +46,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     private var idleActivityTimer: Timer?
     private var idleActivityEndTimer: Timer?
     private var cursorTrackingTimer: Timer?
+    private var laserReactionResumeTimer: Timer?
     private var lifeTimer: Timer?
     private var environmentTimer: Timer?
     private var stateEndDate: Date?
@@ -54,6 +55,7 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     private var idleActivityCompletion: (() -> Void)?
     private var currentLookFrameIndex: Int?
     private var currentIdleActivity: IdleActivity?
+    private var isTrackingLaser = false
     private var wasPetVisibleBeforeSuppression = false
     private var isEnvironmentSuppressed = false
     private var lastToyReactionDate = Date.distantPast
@@ -168,6 +170,8 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
         outingTimer?.invalidate()
         lifeTimer?.invalidate()
         environmentTimer?.invalidate()
+        laserReactionResumeTimer?.invalidate()
+        isTrackingLaser = false
         if settings.lifeSimulationEnabled {
             settings.petLife.advance(sleeping: currentIdleActivity?.isSleep == true)
         }
@@ -1442,14 +1446,17 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     }
 
     private func updateCursorLook() {
+        showLook(toward: NSEvent.mouseLocation, maximumDistance: 520)
+    }
+
+    private func showLook(toward target: CGPoint, maximumDistance: CGFloat) {
         guard case .resting = stateMachine.state, !isIdleActivityPlaying else { return }
 
-        let mouse = NSEvent.mouseLocation
         let catFrame = catWindow.catView.frame.offsetBy(dx: catWindow.panel.frame.minX, dy: catWindow.panel.frame.minY)
-        let dx = mouse.x - catFrame.midX
-        let dy = mouse.y - catFrame.midY
+        let dx = target.x - catFrame.midX
+        let dy = target.y - catFrame.midY
         let distance = hypot(dx, dy)
-        guard distance <= 520 else {
+        guard distance <= maximumDistance else {
             if currentLookFrameIndex != nil {
                 currentLookFrameIndex = nil
                 showRestingPose()
@@ -1836,22 +1843,48 @@ final class DockCatApplication: NSObject, NSApplicationDelegate {
     }
 
     private func reactToToy(_ kind: PetToyKind, at point: CGPoint) {
-        let minimumInterval: TimeInterval = kind == .laser ? 1.25 : 0.25
+        let minimumInterval: TimeInterval = kind == .laser ? 0.08 : 0.25
         guard Date().timeIntervalSince(lastToyReactionDate) >= minimumInterval else { return }
         lastToyReactionDate = Date()
         guard stateMachine.state.isLongDuration else { return }
 
-        let activity: IdleActivity
-        switch kind {
-        case .food:
-            if settings.lifeSimulationEnabled { settings.petLife.apply(.eat) }
-            activity = .eating
-        case .water:
-            if settings.lifeSimulationEnabled { settings.petLife.apply(.drink) }
-            activity = .drinking
-        case .ball, .laser, .wand, .box:
-            if settings.lifeSimulationEnabled { settings.petLife.apply(.play, toy: kind) }
-            activity = .playToy
+        let reaction = PetToyReactionCatalog.reaction(for: kind)
+        if case .trackTarget = reaction {
+            if !isTrackingLaser {
+                if settings.lifeSimulationEnabled {
+                    settings.petLife.apply(.play, toy: kind)
+                    settingsStore.save(settings)
+                }
+                stateScheduler.cancel()
+                stateEndDate = nil
+                stopWalk()
+                stateMachine.enterManualLongDurationState(.resting)
+                stopIdleBehaviors()
+                isTrackingLaser = true
+            }
+            showLook(toward: point, maximumDistance: .greatestFiniteMagnitude)
+            laserReactionResumeTimer?.invalidate()
+            laserReactionResumeTimer = Timer.scheduledTimer(withTimeInterval: 0.22, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.laserReactionResumeTimer = nil
+                    self.isTrackingLaser = false
+                    self.applyConfiguredBehaviorMode()
+                }
+            }
+            return
+        }
+
+        laserReactionResumeTimer?.invalidate()
+        laserReactionResumeTimer = nil
+        isTrackingLaser = false
+        guard case .behavior(let mode) = reaction, let activity = IdleActivity(mode: mode) else { return }
+        if settings.lifeSimulationEnabled {
+            switch kind {
+            case .food: settings.petLife.apply(.eat)
+            case .water: settings.petLife.apply(.drink)
+            default: settings.petLife.apply(.play, toy: kind)
+            }
         }
         settingsStore.save(settings)
         stateScheduler.cancel()
@@ -1982,6 +2015,21 @@ private enum IdleActivity {
     case drinking
     case petResponse
     case signatureMove
+
+    init?(mode: PetBehaviorMode) {
+        switch mode {
+        case .playToy: self = .playToy
+        case .grooming: self = .grooming
+        case .bellyRoll: self = .bellyRoll
+        case .sleepCurled: self = .sleepCurled
+        case .sleepSide: self = .sleepSide
+        case .sleepLoaf: self = .sleepLoaf
+        case .eating: self = .eating
+        case .drinking: self = .drinking
+        case .signatureMove: self = .signatureMove
+        case .random, .resting, .walking: return nil
+        }
+    }
 
     static let autonomousChoices: [IdleActivity] = [
         .playToy,

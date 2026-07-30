@@ -10,6 +10,22 @@ public sealed record BehaviorDescriptor(
     string Label
 );
 
+public sealed record ToyReaction(string? BehaviorMode, bool TracksTarget = false);
+
+public static class ToyReactionCatalog
+{
+    public static ToyReaction For(string kind) => kind switch
+    {
+        "ball" => new("play_toy"),
+        "laser" => new(null, true),
+        "wand" => new("belly_roll"),
+        "box" => new("sleep_loaf"),
+        "food" => new("eating"),
+        "water" => new("drinking"),
+        _ => new(null)
+    };
+}
+
 public sealed class BehaviorCatalog
 {
     private readonly AssetPack _pack;

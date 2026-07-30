@@ -55,6 +55,15 @@ final class PetBehaviorCatalogTests: XCTestCase {
         XCTAssertEqual(english.behaviorModeTitle(.bellyRoll, species: .dog), "Roll over")
     }
 
+    func testDesktopToysHaveDistinctSemanticReactions() {
+        XCTAssertEqual(PetToyReactionCatalog.reaction(for: .ball), .behavior(.playToy))
+        XCTAssertEqual(PetToyReactionCatalog.reaction(for: .laser), .trackTarget)
+        XCTAssertEqual(PetToyReactionCatalog.reaction(for: .wand), .behavior(.bellyRoll))
+        XCTAssertEqual(PetToyReactionCatalog.reaction(for: .box), .behavior(.sleepLoaf))
+        XCTAssertEqual(PetToyReactionCatalog.reaction(for: .food), .behavior(.eating))
+        XCTAssertEqual(PetToyReactionCatalog.reaction(for: .water), .behavior(.drinking))
+    }
+
     func testLifeAndPersonalityChangeAutonomousPriorities() throws {
         let catalog = PetBehaviorCatalog(
             profile: .init(species: .cat),
