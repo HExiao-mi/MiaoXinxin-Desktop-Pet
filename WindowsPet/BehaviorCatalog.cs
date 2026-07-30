@@ -34,6 +34,24 @@ public sealed class BehaviorCatalog
         _ => "signature_move"
     };
 
+    public double AutonomousWeight(BehaviorDescriptor behavior, PetLifeState life, int hour)
+    {
+        var personality = _pack.Manifest.Personality;
+        var factor = behavior.Mode switch
+        {
+            "play_toy" or "signature_move" =>
+                (.35 + personality.Playfulness * 1.4) * Math.Max(.15, life.Energy / 70) * (.45 + life.Curiosity / 75),
+            "grooming" => .45 + personality.Calmness,
+            "belly_roll" => (.3 + personality.Sociability) * (.4 + life.Mood / 85),
+            "sleep_curled" or "sleep_side" or "sleep_loaf" =>
+                (.45 + personality.Sleepiness) * (life.Energy < 35 ? 2.8 : .75) * (hour >= 22 || hour < 7 ? 2.2 : 1),
+            "eating" => (.35 + personality.Appetite) * (life.Fullness < 35 ? 3.2 : .45),
+            "drinking" => life.Hydration < 38 ? 3.5 : .5,
+            _ => 1
+        };
+        return Math.Max(0, behavior.AutonomousWeight * factor);
+    }
+
     private IEnumerable<BehaviorDescriptor> Defaults()
     {
         yield return new("play_toy", "play_toy", 2.2, 2, false, 1, "玩玩具");

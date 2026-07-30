@@ -26,6 +26,38 @@ struct PetBehaviorCatalog {
         )
     }
 
+    func autonomousWeight(
+        for descriptor: PetBehaviorDescriptor,
+        life: PetLifeState,
+        personality: AssetManifest.Personality,
+        hour: Int
+    ) -> Double {
+        var factor = 1.0
+        switch descriptor.mode {
+        case .playToy, .signatureMove:
+            factor *= 0.35 + personality.playfulness * 1.4
+            factor *= max(0.15, life.energy / 70)
+            factor *= 0.45 + life.curiosity / 75
+        case .grooming:
+            factor *= 0.45 + personality.calmness
+        case .bellyRoll:
+            factor *= 0.3 + personality.sociability
+            factor *= 0.4 + life.mood / 85
+        case .sleepCurled, .sleepSide, .sleepLoaf:
+            factor *= 0.45 + personality.sleepiness
+            factor *= life.energy < 35 ? 2.8 : 0.75
+            if hour >= 22 || hour < 7 { factor *= 2.2 }
+        case .eating:
+            factor *= 0.35 + personality.appetite
+            factor *= life.fullness < 35 ? 3.2 : 0.45
+        case .drinking:
+            factor *= life.hydration < 38 ? 3.5 : 0.5
+        case .random, .resting, .walking:
+            break
+        }
+        return max(0, descriptor.autonomousWeight * factor)
+    }
+
     var signatureAssetName: String {
         switch profile.species {
         case .cat: return "pounce"

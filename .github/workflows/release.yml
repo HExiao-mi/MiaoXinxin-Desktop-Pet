@@ -1,0 +1,58 @@
+name: Cross-platform release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package universal macOS app and DMG
+        run: bash Tools/package_macos.sh "$RUNNER_TEMP/dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: ${{ runner.temp }}/dist/*
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Publish portable Windows build
+        shell: pwsh
+        run: ./WindowsPet/Package.ps1 -OutputDirectory "$env:RUNNER_TEMP/dist"
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build Windows installer
+        shell: pwsh
+        run: >-
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          "/DSourceDir=$env:RUNNER_TEMP\dist\MiaoXinxin-win-x64"
+          "/DOutputDir=$env:RUNNER_TEMP\dist"
+          "/DAppVersion=${{ github.ref_name }}"
+          "WindowsPet\installer.iss"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: ${{ runner.temp }}/dist/*
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/* --generate-notes --verify-tag

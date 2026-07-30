@@ -43,6 +43,9 @@ class PetPackCLITests(unittest.TestCase):
             manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
             request = json.loads((output / "pet_request.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["profile"]["species"], "rabbit")
+            self.assertEqual(manifest["schema_version"], 2)
+            self.assertIn("personality", manifest)
+            self.assertEqual({toy["kind"] for toy in manifest["toys"]}, {"ball", "laser", "wand", "box", "food", "water"})
             self.assertIn("binky", manifest["animations"]["behaviors"])
             self.assertTrue((output / "animations" / "binky").is_dir())
             self.assertFalse((output / reference.name).exists())
@@ -81,6 +84,26 @@ class PetPackCLITests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("animations/war_dance", result.stdout)
             self.assertIn("errors=", result.stdout)
+
+    def test_validation_rejects_unsafe_extension_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "pack"
+            result = subprocess.run(
+                [sys.executable, str(TOOL), "init", "--name", "Mimi", "--species", "cat", "--output", str(output)],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest_path = output / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["extensions"] = [{"id": "bad", "kind": "behavior-pack", "path": "../private"}]
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            validation = subprocess.run(
+                [sys.executable, str(TOOL), "validate", str(output)],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(validation.returncode, 1)
+            self.assertIn("扩展路径必须留在资源包内", validation.stdout)
 
 
 if __name__ == "__main__":

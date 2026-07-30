@@ -4,6 +4,7 @@ namespace MiaoXinxin.Windows;
 
 public sealed class PetManifest
 {
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; set; } = 1;
     [JsonPropertyName("id")] public string Id { get; set; } = "pet";
     [JsonPropertyName("name")] public string Name { get; set; } = "Pet";
     [JsonPropertyName("author")] public string Author { get; set; } = "Unknown";
@@ -12,6 +13,39 @@ public sealed class PetManifest
     [JsonPropertyName("canvas_height")] public int CanvasHeight { get; set; } = 1024;
     [JsonPropertyName("poses")] public PosePaths Poses { get; set; } = new();
     [JsonPropertyName("animations")] public AnimationCollection Animations { get; set; } = new();
+    [JsonPropertyName("personality")] public PetPersonality Personality { get; set; } = new();
+    [JsonPropertyName("toys")] public List<ToyDefinition> Toys { get; set; } = ToyDefinition.Defaults();
+    [JsonPropertyName("extensions")] public List<ExtensionDefinition> Extensions { get; set; } = [];
+}
+
+public sealed class PetPersonality
+{
+    [JsonPropertyName("playfulness")] public double Playfulness { get; set; } = .65;
+    [JsonPropertyName("sociability")] public double Sociability { get; set; } = .65;
+    [JsonPropertyName("calmness")] public double Calmness { get; set; } = .55;
+    [JsonPropertyName("appetite")] public double Appetite { get; set; } = .55;
+    [JsonPropertyName("sleepiness")] public double Sleepiness { get; set; } = .55;
+    [JsonPropertyName("curiosity")] public double Curiosity { get; set; } = .7;
+}
+
+public sealed class ToyDefinition
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "toy";
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "ball";
+    [JsonPropertyName("label")] public string? Label { get; set; }
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
+
+    public static List<ToyDefinition> Defaults() => ["ball", "laser", "wand", "box", "food", "water"]
+        .Select(kind => new ToyDefinition { Id = kind, Kind = kind })
+        .ToList();
+}
+
+public sealed class ExtensionDefinition
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "extension";
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "behavior-pack";
+    [JsonPropertyName("path")] public string Path { get; set; } = "extensions";
+    [JsonPropertyName("minimum_app_version")] public string? MinimumAppVersion { get; set; }
 }
 
 public sealed class PetProfile

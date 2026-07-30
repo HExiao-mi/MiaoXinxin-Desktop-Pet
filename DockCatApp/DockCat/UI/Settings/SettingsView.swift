@@ -280,6 +280,7 @@ struct SettingsView: View {
     }
 
     private var parametersTab: some View {
+        ScrollView {
         VStack(alignment: .center, spacing: 14) {
             settingsPanel(
                 title: {
@@ -321,10 +322,43 @@ struct SettingsView: View {
                 }
             )
 
+            settingsPanel(
+                title: { sectionTitle(strings.settingsComfortSection) },
+                content: {
+                    HStack(spacing: 18) {
+                        compactToggle(strings.settingsLifeSimulation, isOn: $draft.lifeSimulationEnabled)
+                        compactToggle(strings.settingsNaturalSchedule, isOn: $draft.naturalScheduleEnabled)
+                    }
+                    HStack(spacing: 18) {
+                        compactToggle(strings.settingsDesktopToys, isOn: $draft.desktopToysEnabled)
+                        compactToggle(strings.settingsQuietMode, isOn: $draft.quietMode)
+                    }
+                    HStack(spacing: 18) {
+                        compactToggle(strings.settingsReducedMotion, isOn: $draft.reducedMotion)
+                        compactToggle(strings.settingsBatterySaver, isOn: $draft.batterySaverEnabled)
+                    }
+                    HStack(spacing: 18) {
+                        compactToggle(strings.settingsHideFullscreen, isOn: $draft.hideDuringFullscreen)
+                        compactToggle(strings.settingsLaunchAtLogin, isOn: $draft.launchAtLogin)
+                    }
+                    HStack(spacing: 18) {
+                        compactToggle(strings.settingsAutomaticUpdates, isOn: $draft.automaticUpdateChecks)
+                        Spacer().frame(width: 190)
+                    }
+                }
+            )
+
             Spacer()
         }
         .padding(.top, 12)
         .padding(.horizontal, 14)
+        }
+    }
+
+    private func compactToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn)
+            .toggleStyle(.checkbox)
+            .frame(width: 190, alignment: .leading)
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -368,7 +402,7 @@ struct SettingsView: View {
                 Text(strings.settingsAboutDescription)
                 HStack(spacing: 0) {
                     Text(strings.settingsProjectPrefix)
-                    Link("https://github.com/Auwuua/DockCat", destination: projectURL)
+                    Link("HExiao-mi/MiaoXinxin-Desktop-Pet", destination: projectURL)
                 }
             }
 
@@ -417,11 +451,11 @@ struct SettingsView: View {
     }
 
     private var projectURL: URL {
-        URL(string: "https://github.com/Auwuua/DockCat")!
+        URL(string: "https://github.com/HExiao-mi/MiaoXinxin-Desktop-Pet")!
     }
 
     private var releasesURL: URL {
-        URL(string: "https://github.com/Auwuua/DockCat/releases")!
+        URL(string: "https://github.com/HExiao-mi/MiaoXinxin-Desktop-Pet/releases")!
     }
 
     private var weChatDonationURL: URL {

@@ -7,7 +7,9 @@ dotnet build WindowsPet.csproj -c Release
 dotnet run --project WindowsPet.csproj -- "C:\path\to\PetPack"
 ```
 
-Without a pack argument, the project copies and loads the bundled Miao Xinxin assets from the macOS source tree. Right-click the transparent pet window to choose Random, Resting, Walking, any available behavior, or the species signature behavior. The selected state persists under `%LOCALAPPDATA%\MiaoXinxin\settings.json`.
+Without a pack argument, the project copies and loads the bundled Miao Xinxin assets from the macOS source tree. Right-click the transparent pet window to choose Random, Resting, Walking, any available behavior, or the species signature behavior. The menu also provides draggable toys/bowls, life status, quiet/fullscreen/reduced-motion/battery modes, launch at login and update checks. The selected state, life memory and last position persist under `%LOCALAPPDATA%\MiaoXinxin\settings.json`.
+
+The app is Per-Monitor-V2 DPI aware and docks against the work area of the display it currently occupies. Package a self-contained portable ZIP with `./Package.ps1`; tagged GitHub releases also compile `installer.iss` into a current-user Setup EXE.
 
 Run pack validation before loading a custom pet:
 

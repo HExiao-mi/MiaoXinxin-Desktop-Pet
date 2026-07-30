@@ -72,6 +72,14 @@ POSE_PATHS = {
     "dialogue": "poses/dialogue",
     "transition": "poses/transition",
 }
+TOY_KINDS = ("ball", "laser", "wand", "box", "food", "water")
+DEFAULT_PERSONALITY: dict[str, dict[str, float]] = {
+    "cat": {"playfulness": 0.75, "sociability": 0.65, "calmness": 0.55, "appetite": 0.6, "sleepiness": 0.65, "curiosity": 0.85},
+    "dog": {"playfulness": 0.85, "sociability": 0.85, "calmness": 0.45, "appetite": 0.7, "sleepiness": 0.5, "curiosity": 0.75},
+    "rabbit": {"playfulness": 0.6, "sociability": 0.5, "calmness": 0.75, "appetite": 0.65, "sleepiness": 0.6, "curiosity": 0.7},
+    "ferret": {"playfulness": 0.95, "sociability": 0.7, "calmness": 0.3, "appetite": 0.65, "sleepiness": 0.55, "curiosity": 0.95},
+    "other": {"playfulness": 0.65, "sociability": 0.65, "calmness": 0.55, "appetite": 0.55, "sleepiness": 0.55, "curiosity": 0.7},
+}
 
 
 def slugify(value: str) -> str:
@@ -149,6 +157,12 @@ def generation_plan(name: str, species: str, breed: str | None, references: list
 - 专属动画：`{profile['signature']}`
 
 macOS 与 Windows 读取同一份资源包，不要制作平台专属帧。
+
+## 个性与可扩展性
+
+- 初始个性参数来自物种模板，完成后应按参考视频中的真实表现微调，而不是套用品种刻板印象。
+- 资源包协议 v2 支持桌面小球、激光点、逗宠棒、纸箱、饭碗和水碗。
+- 可选扩展放在 `extensions/` 下；客户端遇到不认识的扩展时必须安全忽略。
 """
 
 
@@ -176,6 +190,7 @@ def command_init(args: argparse.Namespace) -> int:
         (output / directory).mkdir(parents=True, exist_ok=True)
 
     manifest = {
+        "schema_version": 2,
         "id": pet_id,
         "name": args.name,
         "author": args.author,
@@ -189,6 +204,12 @@ def command_init(args: argparse.Namespace) -> int:
         "canvas_width": args.canvas_size,
         "canvas_height": args.canvas_size,
         "default_anchor": {"x": 0.5, "y": 0.88},
+        "personality": DEFAULT_PERSONALITY[species],
+        "toys": [
+            {"id": kind, "kind": kind, "enabled": True}
+            for kind in TOY_KINDS
+        ],
+        "extensions": [],
         "poses": POSE_PATHS,
         "animations": {
             "walk": {"fps": args.walk_fps, "frames": []},
@@ -197,7 +218,7 @@ def command_init(args: argparse.Namespace) -> int:
         "app_icons": {"sleep": "app_icons/icon_sleep.png", "empty": "app_icons/icon_empty.png"},
     }
     intake = {
-        "schema_version": 1,
+        "schema_version": 2,
         "pet_id": pet_id,
         "name": args.name,
         "species": species,
@@ -269,6 +290,41 @@ def command_validate(args: argparse.Namespace) -> int:
     if species not in SPECIES:
         errors.append(f"profile.species 不支持：{species}")
         species = "other"
+    schema_version = manifest.get("schema_version", 1)
+    if not isinstance(schema_version, int) or schema_version < 1:
+        errors.append("schema_version 必须是大于等于 1 的整数")
+    elif schema_version > 2:
+        warnings.append(f"schema_version={schema_version} 高于当前工具支持的 2")
+
+    personality = manifest.get("personality", DEFAULT_PERSONALITY["other"])
+    for key in DEFAULT_PERSONALITY["other"]:
+        value = personality.get(key) if isinstance(personality, dict) else None
+        if not isinstance(value, (int, float)) or not 0 <= value <= 1:
+            errors.append(f"personality.{key} 必须在 0 到 1 之间")
+
+    toy_ids: set[str] = set()
+    for toy in manifest.get("toys", []):
+        toy_id = toy.get("id") if isinstance(toy, dict) else None
+        kind = toy.get("kind") if isinstance(toy, dict) else None
+        if not isinstance(toy_id, str) or not toy_id.strip():
+            errors.append("toys[].id 不能为空")
+        elif toy_id in toy_ids:
+            errors.append(f"玩具 id 重复：{toy_id}")
+        else:
+            toy_ids.add(toy_id)
+        if kind not in TOY_KINDS:
+            errors.append(f"玩具种类不支持：{kind}")
+
+    for extension in manifest.get("extensions", []):
+        relative = extension.get("path") if isinstance(extension, dict) else None
+        if not isinstance(relative, str) or not relative.strip():
+            errors.append("extensions[].path 不能为空")
+            continue
+        extension_path = Path(relative)
+        if extension_path.is_absolute() or ".." in extension_path.parts:
+            errors.append(f"扩展路径必须留在资源包内：{relative}")
+        elif args.strict and not (root / extension_path).exists():
+            errors.append(f"扩展路径不存在：{relative}")
     required: dict[str, int] = {"walk": 6}
     required.update({name: int(values["minimum_frames"]) for name, values in COMMON_BEHAVIORS.items()})
     signature = SPECIES[species]["signature"]
@@ -316,14 +372,18 @@ def command_validate(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
-def command_prompt(args: argparse.Namespace) -> int:
-    files = "、".join(Path(value).name for value in args.reference) or "我随后附上的照片/视频"
-    print(
+def conversation_prompt(references: list[str | Path]) -> str:
+    files = "、".join(Path(value).name for value in references) or "我随后附上的照片/视频"
+    return (
         f"请使用本仓库的跨平台宠物工作流，把 {files} 中的同一只宠物制作成 macOS 和 Windows 通用桌宠资源包。"
         "请从媒体判断物种、品种、体型、花纹和固定配饰；保持身份一致，并生成散步、休息、三种合理睡姿、玩玩具、"
         "梳理、放松/翻滚、吃饭、喝水、摸摸回应、跟随鼠标转头和物种专属动作。不要向我索要已经能从媒体判断的信息。"
-        "完成后运行严格校验，给出资源包路径和 QA 结果。"
+        "逐帧检查器官数量、配饰和花纹；完成后运行严格校验，给出资源包路径和 QA 结果。"
     )
+
+
+def command_prompt(args: argparse.Namespace) -> int:
+    print(conversation_prompt(args.reference))
     return 0
 
 

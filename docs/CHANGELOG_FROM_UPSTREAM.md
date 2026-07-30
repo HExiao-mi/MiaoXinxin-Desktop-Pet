@@ -12,5 +12,10 @@
 | 多物种 | 自定义图片可不限猫，但无物种语义 | 猫/狗/兔/雪貂/其他的步态、理毛、放松和专属动作映射 | `PetBehaviorCatalog.swift`、`Tools/petpack.py` |
 | 跨平台 | macOS | 新增 Windows 10/11 WPF 客户端，共享同一资源包 | `WindowsPet/` |
 | 制作流程 | 手工参考提示词和文件夹 | 对话附件契约、资源包脚手架、严格自动校验、隐私边界 | `AGENTS.md`、`Tools/petpack.py`、`docs/IMPLEMENTATION.md` |
+| 陪伴模拟 | 无生命数值/个性 | 温和生命状态、性格加权、最爱玩具、昼夜作息和本地成长记录 | `AppSettings.swift`、`PetSettings.cs`、两个 `BehaviorCatalog` |
+| 桌面交互 | 拖动宠物 | 小球、激光点、逗宠棒、纸箱、饭碗和水碗独立透明窗口 | `DesktopToyController.swift`、`DesktopToyWindow.cs` |
+| 系统适配 | macOS Dock 变化 | 双平台多显示器、DPI、全屏隐藏、睡眠/唤醒、节能、减少动态和登录启动 | `Core/System/`、`DesktopEnvironment.cs` |
+| 制作工具 | 无 GUI | Tkinter 宠物工作室：引用、预览、参数编辑、校验、隐私安全导出 | `Tools/pet_studio.py` |
+| 发行更新 | 上游手工 ZIP | macOS DMG/通用 ZIP、Windows 自包含 ZIP/Setup、标签 Release 和版本检查 | `.github/workflows/release.yml`、`docs/DISTRIBUTION.md` |
 
 所有上游文件继续受仓库根目录 `LICENSE.txt` 的 PolyForm Noncommercial 条款约束。本项目新增代码随整体派生作品按同一非商业条款分发，除非权利人另行书面说明。

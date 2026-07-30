@@ -20,6 +20,143 @@ enum PetBehaviorMode: String, Codable, Equatable, Hashable, CaseIterable {
     case signatureMove
 }
 
+enum PetToyKind: String, Codable, Equatable, Hashable, CaseIterable {
+    case ball
+    case laser
+    case wand
+    case box
+    case food
+    case water
+}
+
+enum PetPreferenceToggle {
+    case quietMode
+    case reducedMotion
+    case batterySaver
+    case hideDuringFullscreen
+    case launchAtLogin
+}
+
+enum PetLifeEvent {
+    case pet
+    case play
+    case eat
+    case drink
+    case sleep
+    case wake
+}
+
+/// A deliberately forgiving local simulation: low meters influence behavior but
+/// never punish the user or make the pet ill/disappear.
+struct PetLifeState: Codable, Equatable {
+    var energy: Double = 82
+    var fullness: Double = 78
+    var hydration: Double = 80
+    var mood: Double = 86
+    var affection: Double = 50
+    var curiosity: Double = 72
+    var lastUpdated: Date = Date()
+    var adoptionDate: Date = Date()
+    var lastInteractionDate: Date? = nil
+    var interactions: Int = 0
+    var playCount: Int = 0
+    var meals: Int = 0
+    var drinks: Int = 0
+    var sleeps: Int = 0
+    var favoriteToy: PetToyKind? = nil
+    var toyPlayCounts: [PetToyKind: Int] = [:]
+
+    enum CodingKeys: String, CodingKey {
+        case energy, fullness, hydration, mood, affection, curiosity
+        case lastUpdated, adoptionDate, lastInteractionDate, interactions
+        case playCount, meals, drinks, sleeps, favoriteToy, toyPlayCounts
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        energy = try values.decodeIfPresent(Double.self, forKey: .energy) ?? 82
+        fullness = try values.decodeIfPresent(Double.self, forKey: .fullness) ?? 78
+        hydration = try values.decodeIfPresent(Double.self, forKey: .hydration) ?? 80
+        mood = try values.decodeIfPresent(Double.self, forKey: .mood) ?? 86
+        affection = try values.decodeIfPresent(Double.self, forKey: .affection) ?? 50
+        curiosity = try values.decodeIfPresent(Double.self, forKey: .curiosity) ?? 72
+        lastUpdated = try values.decodeIfPresent(Date.self, forKey: .lastUpdated) ?? Date()
+        adoptionDate = try values.decodeIfPresent(Date.self, forKey: .adoptionDate) ?? Date()
+        lastInteractionDate = try values.decodeIfPresent(Date.self, forKey: .lastInteractionDate)
+        interactions = try values.decodeIfPresent(Int.self, forKey: .interactions) ?? 0
+        playCount = try values.decodeIfPresent(Int.self, forKey: .playCount) ?? 0
+        meals = try values.decodeIfPresent(Int.self, forKey: .meals) ?? 0
+        drinks = try values.decodeIfPresent(Int.self, forKey: .drinks) ?? 0
+        sleeps = try values.decodeIfPresent(Int.self, forKey: .sleeps) ?? 0
+        favoriteToy = try values.decodeIfPresent(PetToyKind.self, forKey: .favoriteToy)
+        toyPlayCounts = try values.decodeIfPresent([PetToyKind: Int].self, forKey: .toyPlayCounts) ?? [:]
+        clampAll()
+    }
+
+    mutating func advance(to date: Date = Date(), sleeping: Bool) {
+        let elapsedHours = max(0, min(24, date.timeIntervalSince(lastUpdated) / 3_600))
+        guard elapsedHours > 0 else { return }
+        if sleeping {
+            energy += elapsedHours * 13
+            fullness -= elapsedHours * 1.3
+            hydration -= elapsedHours * 1.6
+        } else {
+            energy -= elapsedHours * 3.2
+            fullness -= elapsedHours * 2.1
+            hydration -= elapsedHours * 2.6
+            curiosity += elapsedHours * 1.1
+        }
+        if fullness < 30 || hydration < 30 || energy < 20 { mood -= elapsedHours * 1.8 }
+        clampAll()
+        lastUpdated = date
+    }
+
+    mutating func apply(_ event: PetLifeEvent, toy: PetToyKind? = nil, at date: Date = Date()) {
+        lastInteractionDate = date
+        switch event {
+        case .pet:
+            affection += 2.5
+            mood += 4
+            interactions += 1
+        case .play:
+            energy -= 5
+            mood += 7
+            curiosity -= 10
+            playCount += 1
+            if let toy {
+                toyPlayCounts[toy, default: 0] += 1
+                favoriteToy = toyPlayCounts.max(by: { $0.value < $1.value })?.key
+            }
+        case .eat:
+            fullness += 34
+            mood += 3
+            meals += 1
+        case .drink:
+            hydration += 42
+            mood += 2
+            drinks += 1
+        case .sleep:
+            sleeps += 1
+        case .wake:
+            mood += 1
+        }
+        clampAll()
+    }
+
+    private mutating func clampAll() {
+        energy = Self.clamp(energy)
+        fullness = Self.clamp(fullness)
+        hydration = Self.clamp(hydration)
+        mood = Self.clamp(mood)
+        affection = Self.clamp(affection)
+        curiosity = Self.clamp(curiosity)
+    }
+
+    private static func clamp(_ value: Double) -> Double { min(100, max(5, value)) }
+}
+
 struct AppSettings: Codable, Equatable {
     var language: AppLanguage
     var catName: String
@@ -48,6 +185,17 @@ struct AppSettings: Codable, Equatable {
     var activeOutingEndDate: Date?
     var activeOutingDuration: TimeInterval?
     var petBehaviorMode: PetBehaviorMode
+    var lifeSimulationEnabled: Bool
+    var naturalScheduleEnabled: Bool
+    var quietMode: Bool
+    var reducedMotion: Bool
+    var batterySaverEnabled: Bool
+    var hideDuringFullscreen: Bool
+    var launchAtLogin: Bool
+    var desktopToysEnabled: Bool
+    var automaticUpdateChecks: Bool
+    var lastUpdateCheckDate: Date?
+    var petLife: PetLifeState
 
     func reminderMessageSuffix(for type: ReminderType) -> String {
         switch type {
@@ -108,6 +256,17 @@ struct AppSettings: Codable, Equatable {
         case activeOutingEndDate
         case activeOutingDuration
         case petBehaviorMode
+        case lifeSimulationEnabled
+        case naturalScheduleEnabled
+        case quietMode
+        case reducedMotion
+        case batterySaverEnabled
+        case hideDuringFullscreen
+        case launchAtLogin
+        case desktopToysEnabled
+        case automaticUpdateChecks
+        case lastUpdateCheckDate
+        case petLife
     }
 
     enum LegacyCodingKeys: String, CodingKey {
@@ -141,7 +300,19 @@ struct AppSettings: Codable, Equatable {
         catActivityScope: .dockEdge,
         activityDisplayID: nil,
         activeOutingEndDate: nil,
-        activeOutingDuration: nil
+        activeOutingDuration: nil,
+        petBehaviorMode: .random,
+        lifeSimulationEnabled: true,
+        naturalScheduleEnabled: true,
+        quietMode: false,
+        reducedMotion: false,
+        batterySaverEnabled: true,
+        hideDuringFullscreen: true,
+        launchAtLogin: false,
+        desktopToysEnabled: true,
+        automaticUpdateChecks: true,
+        lastUpdateCheckDate: nil,
+        petLife: PetLifeState()
     )
 
     static func defaults(for language: AppLanguage) -> AppSettings {
@@ -175,7 +346,19 @@ struct AppSettings: Codable, Equatable {
                 catActivityScope: .dockEdge,
                 activityDisplayID: nil,
                 activeOutingEndDate: nil,
-                activeOutingDuration: nil
+                activeOutingDuration: nil,
+                petBehaviorMode: .random,
+                lifeSimulationEnabled: true,
+                naturalScheduleEnabled: true,
+                quietMode: false,
+                reducedMotion: false,
+                batterySaverEnabled: true,
+                hideDuringFullscreen: true,
+                launchAtLogin: false,
+                desktopToysEnabled: true,
+                automaticUpdateChecks: true,
+                lastUpdateCheckDate: nil,
+                petLife: PetLifeState()
             )
         }
     }
@@ -207,7 +390,18 @@ struct AppSettings: Codable, Equatable {
         activityDisplayID: UInt32?,
         activeOutingEndDate: Date?,
         activeOutingDuration: TimeInterval?,
-        petBehaviorMode: PetBehaviorMode = .random
+        petBehaviorMode: PetBehaviorMode = .random,
+        lifeSimulationEnabled: Bool = true,
+        naturalScheduleEnabled: Bool = true,
+        quietMode: Bool = false,
+        reducedMotion: Bool = false,
+        batterySaverEnabled: Bool = true,
+        hideDuringFullscreen: Bool = true,
+        launchAtLogin: Bool = false,
+        desktopToysEnabled: Bool = true,
+        automaticUpdateChecks: Bool = true,
+        lastUpdateCheckDate: Date? = nil,
+        petLife: PetLifeState = PetLifeState()
     ) {
         self.language = language
         self.catName = catName
@@ -236,6 +430,17 @@ struct AppSettings: Codable, Equatable {
         self.activeOutingEndDate = activeOutingEndDate
         self.activeOutingDuration = activeOutingDuration
         self.petBehaviorMode = petBehaviorMode
+        self.lifeSimulationEnabled = lifeSimulationEnabled
+        self.naturalScheduleEnabled = naturalScheduleEnabled
+        self.quietMode = quietMode
+        self.reducedMotion = reducedMotion
+        self.batterySaverEnabled = batterySaverEnabled
+        self.hideDuringFullscreen = hideDuringFullscreen
+        self.launchAtLogin = launchAtLogin
+        self.desktopToysEnabled = desktopToysEnabled
+        self.automaticUpdateChecks = automaticUpdateChecks
+        self.lastUpdateCheckDate = lastUpdateCheckDate
+        self.petLife = petLife
     }
 
     init(from decoder: Decoder) throws {
@@ -277,6 +482,17 @@ struct AppSettings: Codable, Equatable {
         activeOutingEndDate = try container.decodeIfPresent(Date.self, forKey: .activeOutingEndDate)
         activeOutingDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .activeOutingDuration)
         petBehaviorMode = try container.decodeIfPresent(PetBehaviorMode.self, forKey: .petBehaviorMode) ?? defaults.petBehaviorMode
+        lifeSimulationEnabled = try container.decodeIfPresent(Bool.self, forKey: .lifeSimulationEnabled) ?? defaults.lifeSimulationEnabled
+        naturalScheduleEnabled = try container.decodeIfPresent(Bool.self, forKey: .naturalScheduleEnabled) ?? defaults.naturalScheduleEnabled
+        quietMode = try container.decodeIfPresent(Bool.self, forKey: .quietMode) ?? defaults.quietMode
+        reducedMotion = try container.decodeIfPresent(Bool.self, forKey: .reducedMotion) ?? defaults.reducedMotion
+        batterySaverEnabled = try container.decodeIfPresent(Bool.self, forKey: .batterySaverEnabled) ?? defaults.batterySaverEnabled
+        hideDuringFullscreen = try container.decodeIfPresent(Bool.self, forKey: .hideDuringFullscreen) ?? defaults.hideDuringFullscreen
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
+        desktopToysEnabled = try container.decodeIfPresent(Bool.self, forKey: .desktopToysEnabled) ?? defaults.desktopToysEnabled
+        automaticUpdateChecks = try container.decodeIfPresent(Bool.self, forKey: .automaticUpdateChecks) ?? defaults.automaticUpdateChecks
+        lastUpdateCheckDate = try container.decodeIfPresent(Date.self, forKey: .lastUpdateCheckDate)
+        petLife = try container.decodeIfPresent(PetLifeState.self, forKey: .petLife) ?? defaults.petLife
     }
 
     func encode(to encoder: Encoder) throws {
@@ -308,6 +524,17 @@ struct AppSettings: Codable, Equatable {
         try container.encodeIfPresent(activeOutingEndDate, forKey: .activeOutingEndDate)
         try container.encodeIfPresent(activeOutingDuration, forKey: .activeOutingDuration)
         try container.encode(petBehaviorMode, forKey: .petBehaviorMode)
+        try container.encode(lifeSimulationEnabled, forKey: .lifeSimulationEnabled)
+        try container.encode(naturalScheduleEnabled, forKey: .naturalScheduleEnabled)
+        try container.encode(quietMode, forKey: .quietMode)
+        try container.encode(reducedMotion, forKey: .reducedMotion)
+        try container.encode(batterySaverEnabled, forKey: .batterySaverEnabled)
+        try container.encode(hideDuringFullscreen, forKey: .hideDuringFullscreen)
+        try container.encode(launchAtLogin, forKey: .launchAtLogin)
+        try container.encode(desktopToysEnabled, forKey: .desktopToysEnabled)
+        try container.encode(automaticUpdateChecks, forKey: .automaticUpdateChecks)
+        try container.encodeIfPresent(lastUpdateCheckDate, forKey: .lastUpdateCheckDate)
+        try container.encode(petLife, forKey: .petLife)
     }
 
     static func normalizedOutingDepartureMessageSuffix(
