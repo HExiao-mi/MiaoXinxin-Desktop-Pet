@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using Application = System.Windows.Application;
 
 namespace MiaoXinxin.Windows;
 

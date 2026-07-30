@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
+using Point = System.Windows.Point;
 
 namespace MiaoXinxin.Windows;
 
