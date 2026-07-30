@@ -13,7 +13,15 @@
 
 ## macOS 签名与 notarization
 
-`Tools/package_macos.sh` 在存在 `MACOS_SIGNING_IDENTITY` 时启用 hardened runtime 签名；否则生成仅供源码验证的未签名包。正式公开发行还应在受保护的 CI 环境配置 Developer ID Application 证书，完成 `notarytool submit --wait`，然后 `stapler staple` DMG。证书、Apple ID/app-specific password 或 App Store Connect API key不得写入仓库。
+`Tools/package_macos.sh` 在存在 `MACOS_SIGNING_IDENTITY` 时启用 hardened runtime 签名；否则自动进行完整的 ad-hoc 签名，因此没有开发者证书的源码构建也可以在本机启动。正式公开发行仍应在受保护的 CI 环境配置 Developer ID Application 证书，完成 `notarytool submit --wait`，然后 `stapler staple` DMG。证书、Apple ID/app-specific password 或 App Store Connect API key 不得写入仓库。
+
+Apple Silicon Mac 可用下面的快速命令生成本机 ZIP 和 DMG；默认不设置 `MACOS_ARCHS` 时仍构建 Intel/Apple Silicon 通用包：
+
+```bash
+MACOS_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES bash Tools/package_macos.sh dist/local-arm64
+```
+
+ZIP 与 DMG 内的应用统一命名为 `MiaoXinxin.app`。构建脚本会在打包前执行 `codesign --verify --deep --strict`，避免生成无法启动的本地包。
 
 ## Windows 签名
 
